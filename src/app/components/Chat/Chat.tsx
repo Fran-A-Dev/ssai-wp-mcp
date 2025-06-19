@@ -3,12 +3,15 @@
 import React, { ChangeEvent } from "react";
 import Messages from "./Messages";
 import { Message } from "ai/react";
+import LoadingIcon from "../Icons/LoadingIcon";
+import ChatInput from "./ChatInput";
 
 interface Chat {
   input: string;
   handleInputChange: (e: ChangeEvent<HTMLInputElement>) => void;
   handleMessageSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
   messages: Message[];
+  status: "submitted" | "streaming" | "ready" | "error";
 }
 
 const Chat: React.FC<Chat> = ({
@@ -16,24 +19,17 @@ const Chat: React.FC<Chat> = ({
   handleInputChange,
   handleMessageSubmit,
   messages,
+  status,
 }) => {
   return (
     <div id="chat" className="flex flex-col w-full mx-2">
       <Messages messages={messages} />
+      {status === "submitted" && <LoadingIcon />}
       <form
         onSubmit={handleMessageSubmit}
-        className="ml-1 mt-5 mb-5 relative bg-gray-500 rounded-lg"
+        className="ml-1 mt-5 mb-5 relative rounded-lg"
       >
-        <input
-          type="text"
-          className="input-glow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline pl-3 pr-10 bg-gray-100 border-gray-100 transition-shadow duration-200"
-          value={input}
-          onChange={handleInputChange}
-        />
-
-        <span className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
-          Press ⮐ to send
-        </span>
+        <ChatInput input={input} handleInputChange={handleInputChange} />
       </form>
     </div>
   );
