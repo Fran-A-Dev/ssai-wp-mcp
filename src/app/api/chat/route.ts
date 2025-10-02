@@ -1,10 +1,24 @@
 // IMPORTANT! Set the runtime to edge
 export const runtime = "edge";
 
-import { convertToCoreMessages, Message, streamText } from "ai";
+import {
+  convertToCoreMessages,
+  experimental_createMCPClient,
+  Message,
+  streamText,
+} from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 
-import { smartSearchTool, weatherTool } from "@/app/utils/tools";
+import { weatherTool } from "@/app/utils/tools";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+
+const httpTransport = new StreamableHTTPClientTransport(
+  new URL(process.env.AI_TOOLKIT_MCP_URL || "http://localhost:8080/mcp")
+);
+
+const client = await experimental_createMCPClient({
+  transport: httpTransport,
+});
 
 /**
  * Initialize the Google Generative AI API
@@ -13,12 +27,13 @@ const google = createGoogleGenerativeAI();
 
 export async function POST(req: Request) {
   try {
+    const aiTkTools = await client.tools();
     const { messages }: { messages: Array<Message> } = await req.json();
 
     const coreMessages = convertToCoreMessages(messages);
 
     const smartSearchPrompt = `
-    - You can use the 'smartSearchTool' to find information relating to tv shows.
+    - You can use the 'search' tool to find information relating to tv shows.
       - WP Engine Smart Search is a powerful tool for finding information about TV shows.
       - After the 'smartSearchTool' provides results (even if it's an error or no information found)
       - You MUST then formulate a conversational response to the user based on those results but also use the tool if the users query is deemed plausible.
@@ -35,8 +50,9 @@ export async function POST(req: Request) {
       system: [smartSearchPrompt, systemPromptContent].join("\n"),
       messages: coreMessages,
       tools: {
-        smartSearchTool,
+        // smartSearchTool,
         weatherTool,
+        ...aiTkTools,
       },
       onStepFinish: async (result) => {
         // Log token usage for each step

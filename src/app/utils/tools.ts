@@ -1,5 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
+<<<<<<< Updated upstream
 import { getContext } from "@/app/utils/context";
 
 // Define the search tool
@@ -63,6 +64,8 @@ export const smartSearchTool = tool({
     }
   },
 });
+=======
+>>>>>>> Stashed changes
 
 export const weatherTool = tool({
   description:

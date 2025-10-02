@@ -12,10 +12,8 @@ npm install
 Setup the environment variables:
 
 ```
-export OPENAI_API_KEY="<your key here>"
 export GOOGLE_GENERATIVE_AI_API_KEY="<your key here>"
-export SMART_SEARCH_URL="<your smart search url here>"
-export SMART_SEARCH_ACCESS_TOKEN="<your smart search access token here>"
+export AI_TOOLKIT_MCP_URL="https://your-endpoint.com/mcp"
 ```
 
 Then, run the development server:
