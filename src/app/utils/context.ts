@@ -1,3 +1,4 @@
+/*
 // These are the types that are used in the `getContext` function
 type Doc = {
   id: string;
@@ -55,3 +56,4 @@ export const getContext = async (message: string): Promise<Response> => {
 
   return await response.json();
 };
+*/

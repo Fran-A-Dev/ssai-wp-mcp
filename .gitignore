@@ -34,3 +34,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local demo artifacts
+mcp.cookies
+cloudinarydocs.md
+ssai-docs.md
+wp-mcp-server.php
