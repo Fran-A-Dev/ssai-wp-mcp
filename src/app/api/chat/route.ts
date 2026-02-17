@@ -26,6 +26,71 @@ let mcpClientsCache: {
   wordpress: any;
 } | null = null;
 
+const createPostDescription =
+  "Create a WordPress post. If including a Cloudinary image, ALWAYS pass cloudinary_url (secure URL) so the image is embedded.";
+
+const createPostParameters = z.object({
+  title: z.string().min(1),
+  content: z.string().min(1),
+  status: z.enum(["publish", "draft", "pending"]).optional(),
+  cloudinary_url: z.string().optional(),
+  cloudinary_public_id: z.string().optional(),
+});
+const updatePostParameters = z.object({
+  post_id: z.number(),
+  title: z.string().optional(),
+  content: z.string().optional(),
+  status: z.string().optional(),
+});
+const getPostParameters = z.object({
+  post_id: z.number(),
+});
+const listPostsParameters = z.object({
+  limit: z.number().optional(),
+  status: z.string().optional(),
+});
+const passthroughObjectParameters = z.object({}).passthrough();
+
+function validateCreatePostArgs(args: z.infer<typeof createPostParameters>) {
+  if (args.cloudinary_public_id && !args.cloudinary_url) {
+    throw new Error(
+      "cloudinary_url is required to embed the image when cloudinary_public_id is provided."
+    );
+  }
+}
+
+function addHyphenAliases(tools: Record<string, any>, extraAliases: Record<string, string> = {}) {
+  const withAliases: Record<string, any> = { ...tools };
+  for (const [name, tool] of Object.entries(tools)) {
+    const alias = name.replace(/-/g, "_");
+    if (!(alias in withAliases)) {
+      withAliases[alias] = tool;
+    }
+  }
+
+  for (const [alias, canonicalName] of Object.entries(extraAliases)) {
+    if (canonicalName in withAliases && !(alias in withAliases)) {
+      withAliases[alias] = withAliases[canonicalName];
+    }
+  }
+
+  return withAliases;
+}
+
+async function loadToolsSafely(
+  client: any,
+  builder: (rawTools: Record<string, any>) => Record<string, any>
+) {
+  if (!client) return {};
+
+  try {
+    const rawTools = await client.tools();
+    return builder(rawTools);
+  } catch {
+    return {};
+  }
+}
+
 function buildStableSmartSearchTools(rawTools: Record<string, any>) {
   const stableTools: Record<string, any> = {};
 
@@ -105,7 +170,7 @@ function buildStableCloudinaryTools(rawTools: Record<string, any>) {
     stableTools[name] = tool({
       description: raw.description || `Cloudinary tool: ${name}`,
       // Force OBJECT schema for Gemini compatibility.
-      parameters: z.object({}).passthrough(),
+      parameters: passthroughObjectParameters,
       execute: async (args) => raw.execute(args ?? {}),
     });
   }
@@ -124,13 +189,6 @@ function buildStableWordPressTools(rawTools: Record<string, any>) {
     "wpengine--list-posts",
     "wpengine--index-cloudinary-asset",
     "wpengine--bulk-index-cloudinary-assets",
-    "wpengine--list-accounts",
-    "wpengine--list-sites",
-    "wpengine--list-installs",
-    "wpengine--get-install",
-    "wpengine--create-site",
-    "wpengine--create-install",
-    "wpengine--purge-install-cache",
   ];
 
   for (const name of wordpressToolNames) {
@@ -139,15 +197,12 @@ function buildStableWordPressTools(rawTools: Record<string, any>) {
 
     if (name === "wpengine--create-post") {
       stableTools[name] = tool({
-        description: raw.description || "Create a WordPress post with optional Cloudinary image.",
-        parameters: z.object({
-          title: z.string().min(1),
-          content: z.string().min(1),
-          status: z.enum(["publish", "draft", "pending"]).optional(),
-          cloudinary_url: z.string().optional(),
-          cloudinary_public_id: z.string().optional(),
-        }),
-        execute: async (args) => raw.execute(args),
+        description: raw.description || createPostDescription,
+        parameters: createPostParameters,
+        execute: async (args) => {
+          validateCreatePostArgs(args);
+          return raw.execute(args);
+        },
       });
       continue;
     }
@@ -155,12 +210,7 @@ function buildStableWordPressTools(rawTools: Record<string, any>) {
     if (name === "wpengine--update-post") {
       stableTools[name] = tool({
         description: raw.description || "Update an existing WordPress post.",
-        parameters: z.object({
-          post_id: z.number(),
-          title: z.string().optional(),
-          content: z.string().optional(),
-          status: z.string().optional(),
-        }),
+        parameters: updatePostParameters,
         execute: async (args) => raw.execute(args),
       });
       continue;
@@ -169,9 +219,7 @@ function buildStableWordPressTools(rawTools: Record<string, any>) {
     if (name === "wpengine--get-post") {
       stableTools[name] = tool({
         description: raw.description || "Get details of a WordPress post by ID.",
-        parameters: z.object({
-          post_id: z.number(),
-        }),
+        parameters: getPostParameters,
         execute: async (args) => raw.execute(args),
       });
       continue;
@@ -180,10 +228,7 @@ function buildStableWordPressTools(rawTools: Record<string, any>) {
     if (name === "wpengine--list-posts") {
       stableTools[name] = tool({
         description: raw.description || "List WordPress posts.",
-        parameters: z.object({
-          limit: z.number().optional(),
-          status: z.string().optional(),
-        }),
+        parameters: listPostsParameters,
         execute: async (args) => raw.execute(args ?? {}),
       });
       continue;
@@ -191,7 +236,7 @@ function buildStableWordPressTools(rawTools: Record<string, any>) {
 
     stableTools[name] = tool({
       description: raw.description || `WordPress tool: ${name}`,
-      parameters: z.object({}).passthrough(),
+      parameters: passthroughObjectParameters,
       execute: async (args) => raw.execute(args ?? {}),
     });
   }
@@ -241,44 +286,31 @@ function buildDirectWordPressFallbackTools(wordpressMcpUrl?: string, wordpressMc
 
   return {
     "wpengine--create-post": tool({
-      description: "Create a new WordPress post with optional Cloudinary image.",
-      parameters: z.object({
-        title: z.string().min(1),
-        content: z.string().min(1),
-        status: z.enum(["publish", "draft", "pending"]).optional(),
-        cloudinary_url: z.string().optional(),
-        cloudinary_public_id: z.string().optional(),
-      }),
-      execute: async (args) => callWordPressTool("wpengine--create-post", args),
+      description: createPostDescription,
+      parameters: createPostParameters,
+      execute: async (args) => {
+        validateCreatePostArgs(args);
+        return callWordPressTool("wpengine--create-post", args);
+      },
     }),
     "wpengine--update-post": tool({
       description: "Update an existing WordPress post.",
-      parameters: z.object({
-        post_id: z.number(),
-        title: z.string().optional(),
-        content: z.string().optional(),
-        status: z.string().optional(),
-      }),
+      parameters: updatePostParameters,
       execute: async (args) => callWordPressTool("wpengine--update-post", args),
     }),
     "wpengine--get-post": tool({
       description: "Get details of a specific WordPress post.",
-      parameters: z.object({
-        post_id: z.number(),
-      }),
+      parameters: getPostParameters,
       execute: async (args) => callWordPressTool("wpengine--get-post", args),
     }),
     "wpengine--list-posts": tool({
       description: "List WordPress posts.",
-      parameters: z.object({
-        limit: z.number().optional(),
-        status: z.string().optional(),
-      }),
+      parameters: listPostsParameters,
       execute: async (args) => callWordPressTool("wpengine--list-posts", args ?? {}),
     }),
     "wpengine--get-current-site-info": tool({
       description: "Get information about the current WordPress site.",
-      parameters: z.object({}).passthrough(),
+      parameters: passthroughObjectParameters,
       execute: async () => callWordPressTool("wpengine--get-current-site-info", {}),
     }),
   };
@@ -337,8 +369,7 @@ async function getMCPClients() {
     cloudinaryClient = await experimental_createMCPClient({
       transport: cloudinaryTransport,
     });
-  } catch (error) {
-    console.error("[Cloudinary MCP] Connection failed:", error);
+  } catch {
     cloudinaryClient = null;
   }
 
@@ -368,8 +399,7 @@ async function getMCPClients() {
       wordpressClient = await experimental_createMCPClient({
         transport: wordpressTransport,
       });
-    } catch (error) {
-      console.error("[WordPress MCP] Connection failed:", error);
+    } catch {
       wordpressClient = null;
     }
   }
@@ -397,26 +427,16 @@ export async function POST(req: Request) {
     const smartSearchTools = buildStableSmartSearchTools(rawSmartSearchTools);
 
     // Get tools from Cloudinary MCP if connected
-    let cloudinaryTools: any = {};
-    if (cloudinaryClient) {
-      try {
-        const rawCloudinaryTools = await cloudinaryClient.tools();
-        cloudinaryTools = buildStableCloudinaryTools(rawCloudinaryTools);
-      } catch (error) {
-        console.error("[MCP Tools] Error getting Cloudinary tools:", error);
-      }
-    }
+    const cloudinaryTools = await loadToolsSafely(
+      cloudinaryClient,
+      buildStableCloudinaryTools
+    );
 
     // Get tools from WordPress MCP if connected
-    let wordpressTools: any = {};
-    if (wordpressClient) {
-      try {
-        const rawWordPressTools = await wordpressClient.tools();
-        wordpressTools = buildStableWordPressTools(rawWordPressTools);
-      } catch (error) {
-        console.error("[MCP Tools] Error getting WordPress tools:", error);
-      }
-    }
+    let wordpressTools = await loadToolsSafely(
+      wordpressClient,
+      buildStableWordPressTools
+    );
     if (Object.keys(wordpressTools).length === 0) {
       wordpressTools = buildDirectWordPressFallbackTools(
         process.env.WORDPRESS_MCP_URL,
@@ -425,14 +445,7 @@ export async function POST(req: Request) {
     }
 
     const { messages }: { messages: Array<Message> } = await req.json();
-
-    const latestMessage = messages[messages.length - 1];
-
     const coreMessages = convertToCoreMessages(messages);
-    const latestUserText =
-      latestMessage?.role === "user" && typeof latestMessage.content === "string"
-        ? latestMessage.content
-        : "";
 
     const systemPromptContent = `You are a helpful AI assistant with access to tools for searching data.
 
@@ -449,41 +462,21 @@ CRITICAL INSTRUCTIONS:
 3. When users ask about WordPress posts, publishing, drafts, site info, or cache:
    - You MUST use WordPress tools (wpengine--create-post, wpengine--list-posts, etc.)
    - NEVER respond without calling a WordPress tool first
+   - If creating a post with a Cloudinary image, you MUST include cloudinary_url in wpengine--create-post arguments
 
 4. When users ask about weather:
    - You MUST use the weatherTool
 
 NEVER make up data. ALWAYS call the appropriate tool before responding.`;
 
-    const cloudinaryToolsWithAliases: Record<string, any> = { ...cloudinaryTools };
-    for (const [name, tool] of Object.entries(cloudinaryTools)) {
-      const alias = name.replace(/-/g, "_");
-      if (!(alias in cloudinaryToolsWithAliases)) {
-        cloudinaryToolsWithAliases[alias] = tool;
-      }
-    }
-    const wordpressToolsWithAliases: Record<string, any> = { ...wordpressTools };
-    for (const [name, tool] of Object.entries(wordpressTools)) {
-      const alias = name.replace(/-/g, "_");
-      if (!(alias in wordpressToolsWithAliases)) {
-        wordpressToolsWithAliases[alias] = tool;
-      }
-    }
-    if ("wpengine--create-post" in wordpressToolsWithAliases && !("post" in wordpressToolsWithAliases)) {
-      wordpressToolsWithAliases.post = wordpressToolsWithAliases["wpengine--create-post"];
-    }
-
-    const isCloudinaryIntent = /cloudinary|image|images|video|videos|asset|assets|media|folder|transform/i.test(
-      latestUserText
-    );
-    const isWordPressIntent =
-      /wordpress|wp engine|wpengine|post|blog|article|draft|publish|site info|cache|create post|update post/i.test(
-        latestUserText
-      );
+    const cloudinaryToolsWithAliases = addHyphenAliases(cloudinaryTools);
+    const wordpressToolsWithAliases = addHyphenAliases(wordpressTools, {
+      post: "wpengine--create-post",
+    });
 
     const allTools = {
-      ...(isCloudinaryIntent ? cloudinaryToolsWithAliases : {}),
-      ...(isWordPressIntent ? wordpressToolsWithAliases : {}),
+      ...cloudinaryToolsWithAliases,
+      ...wordpressToolsWithAliases,
       ...smartSearchTools,
       weatherTool,
     };
