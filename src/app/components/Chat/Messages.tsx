@@ -29,7 +29,19 @@ export default function Messages({ messages }: { messages: Message[] }) {
               msg.role === "assistant" ? "text-gray-100" : "text-gray-100"
             }`}
           >
-            <ReactMarkdown>{msg.content}</ReactMarkdown>
+            <ReactMarkdown
+              components={{
+                img: ({ src, alt }) => (
+                  <img
+                    src={src}
+                    alt={alt}
+                    className="max-w-sm max-h-80 my-2 rounded-md shadow-md"
+                  />
+                ),
+              }}
+            >
+              {msg.content}
+            </ReactMarkdown>
           </div>
         </div>
       ))}

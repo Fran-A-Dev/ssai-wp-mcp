@@ -1,0 +1,34 @@
+{
+  "assets": [
+    {
+      "type": "pdf",
+      "id": "presskit:eternal-spring",
+      "url": "https://decodesearch.wpenginepowered.com/wp-content/uploads/2026/04/Press_Kit_Eternal_Spring_051722.pdf",
+      "title": "Eternal Spring — Press Kit"
+    },
+    {
+      "type": "image",
+      "id": "image:eternal-spring-lead-still",
+      "url": "https://decodesearch.wpenginepowered.com/wp-content/uploads/2026/05/ETERNAL-SPRING-Still-1-copyright-Lofty-Sky-Pictures_LeadImage-scaled.png",
+      "title": "Eternal Spring — Lead Still"
+    },
+    {
+      "type": "image",
+      "id": "image:eternal-spring-still-7",
+      "url": "https://decodesearch.wpenginepowered.com/wp-content/uploads/2026/05/ETERNAL-SPRING-Still-7-copyright-Lofty-Sky-Pictures-scaled.png",
+      "title": "Eternal Spring — Still #7"
+    },
+    {
+      "type": "image",
+      "id": "image:eternal-spring-awards-poster",
+      "url": "https://decodesearch.wpenginepowered.com/wp-content/uploads/2026/05/ETERNAL-SPRING_Awards-Poster-Cover-copyright-Lofty-Sky-Pictures-scaled.jpg",
+      "title": "Eternal Spring — Awards Poster"
+    },
+    {
+      "type": "image",
+      "id": "image:eternal-spring-poster",
+      "url": "https://decodesearch.wpenginepowered.com/wp-content/uploads/2026/05/ETERNAL-SPRING_Poster-Cover-copyright-Lofty-Sky-Pictures.jpg",
+      "title": "Eternal Spring — Poster"
+    }
+  ]
+}

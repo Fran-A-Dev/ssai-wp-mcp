@@ -59,24 +59,6 @@ function validateCreatePostArgs(args: z.infer<typeof createPostParameters>) {
   }
 }
 
-function addHyphenAliases(tools: Record<string, any>, extraAliases: Record<string, string> = {}) {
-  const withAliases: Record<string, any> = { ...tools };
-  for (const [name, tool] of Object.entries(tools)) {
-    const alias = name.replace(/-/g, "_");
-    if (!(alias in withAliases)) {
-      withAliases[alias] = tool;
-    }
-  }
-
-  for (const [alias, canonicalName] of Object.entries(extraAliases)) {
-    if (canonicalName in withAliases && !(alias in withAliases)) {
-      withAliases[alias] = withAliases[canonicalName];
-    }
-  }
-
-  return withAliases;
-}
-
 async function loadToolsSafely(
   client: any,
   builder: (rawTools: Record<string, any>) => Record<string, any>
@@ -322,8 +304,27 @@ async function getMCPClients() {
   }
 
   // Smart Search MCP Client
+  // Token comes from WP Engine User Portal -> Smart Search -> Show Credentials
+  // (different credential from the GraphQL ingestion token).
+  const aiToolkitMcpToken = process.env.AI_TOOLKIT_MCP_TOKEN;
+  const aiToolkitMcpUrl = process.env.AI_TOOLKIT_MCP_URL || "http://localhost:8080/mcp";
+
   const smartSearchTransport = new StreamableHTTPClientTransport(
-    new URL(process.env.AI_TOOLKIT_MCP_URL || "http://localhost:8080/mcp")
+    new URL(aiToolkitMcpUrl),
+    {
+      fetch: (url: string | URL, init?: RequestInit) => {
+        // Build headers via the Headers API (case-insensitive set/replace) so
+        // the MCP session ID the SDK attaches survives, but our auth/accept
+        // values cleanly override any duplicates.
+        const headers = new Headers(init?.headers);
+        headers.set("Accept", "application/json, text/event-stream");
+        headers.set("Content-Type", "application/json");
+        if (aiToolkitMcpToken) {
+          headers.set("Authorization", `Bearer ${aiToolkitMcpToken}`);
+        }
+        return fetch(url, { ...init, headers });
+      },
+    } as any
   );
 
   const smartSearchClient = await experimental_createMCPClient({
@@ -449,34 +450,26 @@ export async function POST(req: Request) {
 
     const systemPromptContent = `You are a helpful AI assistant with access to tools for searching data.
 
-CRITICAL INSTRUCTIONS:
-1. When users ask about Cloudinary, images, videos, media, or assets:
-   - You MUST use Cloudinary tools (search-assets, list-images, list-videos, etc.)
-   - NEVER respond without calling a Cloudinary tool first
-   - Example queries: "show images", "find assets", "list videos", "search for tag"
+PRIMARY KNOWLEDGE SOURCE: Smart Search
+The 'search' tool is your primary source for all content questions — films, movies, press kits, documents, posters, stills, photographs, articles, or any indexed media. The Smart Search index contains BOTH text documents (PDFs) AND image documents (with AI-generated descriptions). Each document has fields like title, asset_type ("pdf" or "image"), source_url, body, and (for images) caption and alt_text.
 
-2. When users ask about TV shows or knowledge retrieval:
-   - You MUST use the 'search' tool
-   - NEVER respond without calling the search tool first
+For any content question:
+1. Call 'search' with the user's query.
+2. If the top result(s) look relevant, IMMEDIATELY call 'fetch' on them to get full content. Do not ask the user for permission to fetch — just fetch and answer in a single turn.
+3. Synthesize the answer from the fetched content.
+4. When a result has asset_type === "image", you MUST include its source_url in your answer (as a markdown image: ![title](source_url) or a clickable link) so the user can see the image. Do not describe an image without surfacing its URL.
+5. For mixed queries ("tell me about X and show me what it looks like"), fetch BOTH the relevant PDF docs AND image docs, and combine them in one answer.
 
-3. When users ask about WordPress posts, publishing, drafts, site info, or cache:
-   - You MUST use WordPress tools (wpengine--create-post, wpengine--list-posts, etc.)
-   - NEVER respond without calling a WordPress tool first
-   - If creating a post with a Cloudinary image, you MUST include cloudinary_url in wpengine--create-post arguments
-
-4. When users ask about weather:
-   - You MUST use the weatherTool
+OTHER TOOLS:
+- Cloudinary tools (search-assets, list-images, etc.): ONLY when the user explicitly mentions "Cloudinary", "asset library", "asset management", or asks to manage/upload/transform Cloudinary-specific media. NEVER use Cloudinary for general content search — your indexed content lives in Smart Search.
+- WordPress tools (wpengine--*): when users ask about WordPress posts, publishing, drafts, site info, or cache. If creating a post with a Cloudinary image, include cloudinary_url.
+- weatherTool: for weather questions.
 
 NEVER make up data. ALWAYS call the appropriate tool before responding.`;
 
-    const cloudinaryToolsWithAliases = addHyphenAliases(cloudinaryTools);
-    const wordpressToolsWithAliases = addHyphenAliases(wordpressTools, {
-      post: "wpengine--create-post",
-    });
-
     const allTools = {
-      ...cloudinaryToolsWithAliases,
-      ...wordpressToolsWithAliases,
+      ...cloudinaryTools,
+      ...wordpressTools,
       ...smartSearchTools,
       weatherTool,
     };

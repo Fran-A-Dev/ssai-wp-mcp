@@ -40,3 +40,10 @@ mcp.cookies
 cloudinarydocs.md
 ssai-docs.md
 wp-mcp-server.php
+
+# local-only reference docs and debug scripts
+docs/
+scripts/test-mcp-auth.sh
+
+# editor / workspace files
+*.code-workspace
