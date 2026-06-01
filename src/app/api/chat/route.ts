@@ -76,6 +76,19 @@ async function loadToolsSafely(
 function buildStableSmartSearchTools(rawTools: Record<string, any>) {
   const stableTools: Record<string, any> = {};
 
+  const previewResult = (label: string, args: unknown, result: unknown) => {
+    const serialize = (val: unknown) => {
+      try {
+        const json = JSON.stringify(val, null, 2);
+        return json.length > 2000 ? json.slice(0, 2000) + "\n…[truncated]" : json;
+      } catch {
+        return String(val);
+      }
+    };
+    console.log(`[smart-search:${label}] args=${serialize(args)}`);
+    console.log(`[smart-search:${label}] result=${serialize(result)}`);
+  };
+
   if (rawTools.search?.execute) {
     stableTools.search = tool({
       description:
@@ -87,7 +100,11 @@ function buildStableSmartSearchTools(rawTools: Record<string, any>) {
         limit: z.number().optional(),
         offset: z.number().optional(),
       }),
-      execute: async (args) => rawTools.search.execute(args),
+      execute: async (args) => {
+        const result = await rawTools.search.execute(args);
+        previewResult("search", args, result);
+        return result;
+      },
     });
   }
 
@@ -99,7 +116,11 @@ function buildStableSmartSearchTools(rawTools: Record<string, any>) {
       parameters: z.object({
         id: z.string().min(1),
       }),
-      execute: async (args) => rawTools.fetch.execute(args),
+      execute: async (args) => {
+        const result = await rawTools.fetch.execute(args);
+        previewResult("fetch", args, result);
+        return result;
+      },
     });
   }
 
@@ -454,11 +475,17 @@ PRIMARY KNOWLEDGE SOURCE: Smart Search
 The 'search' tool is your primary source for all content questions — films, movies, press kits, documents, posters, stills, photographs, articles, or any indexed media. The Smart Search index contains BOTH text documents (PDFs) AND image documents (with AI-generated descriptions). Each document has fields like title, asset_type ("pdf" or "image"), source_url, body, and (for images) caption and alt_text.
 
 For any content question:
-1. Call 'search' with the user's query.
+1. Call 'search' with the user's query. Use limit: 5 for normal text questions, but limit: 10 (or higher) when the query mentions a visual asset (poster, image, photo, picture, still, screenshot, diagram, infographic, illustration). Text-heavy results will otherwise crowd image results out of the top-K.
 2. If the top result(s) look relevant, IMMEDIATELY call 'fetch' on them to get full content. Do not ask the user for permission to fetch — just fetch and answer in a single turn.
 3. Synthesize the answer from the fetched content.
-4. When a result has asset_type === "image", you MUST include its source_url in your answer (as a markdown image: ![title](source_url) or a clickable link) so the user can see the image. Do not describe an image without surfacing its URL.
-5. For mixed queries ("tell me about X and show me what it looks like"), fetch BOTH the relevant PDF docs AND image docs, and combine them in one answer.
+4. When you reference an image in your answer:
+   - Use the EXACT source_url from THAT image document (asset_type === "image"). NEVER reuse a source_url from a PDF or any other document.
+   - The URL inside ![](url) MUST end in an image extension (.jpg, .jpeg, .png, .gif, .webp, .svg). If the only URL you have is a PDF or other non-image file, render it as a regular markdown link [title](url), NEVER as ![](url).
+   - If a relevant image result is missing source_url in the search response, call 'fetch' on that image's id to retrieve it before answering.
+5. For mixed queries ("tell me about X and show me what it looks like"), do TWO SEPARATE searches:
+   - First search: the topic itself (e.g., "Eternal Spring lead subject") to find explanatory PDF/text content.
+   - Second search: the specific visual asset the user asked for (e.g., "Eternal Spring poster" or "Eternal Spring still image"), with limit: 10 so the image actually surfaces.
+   Then fetch and combine BOTH the PDF and image docs in one answer. A single combined search will usually fail to return image results because the body text of images describes their visual content (e.g., "a street scene at night"), not their asset role (e.g., "poster"), so generic queries miss them.
 
 OTHER TOOLS:
 - Cloudinary tools (search-assets, list-images, etc.): ONLY when the user explicitly mentions "Cloudinary", "asset library", "asset management", or asks to manage/upload/transform Cloudinary-specific media. NEVER use Cloudinary for general content search — your indexed content lives in Smart Search.
